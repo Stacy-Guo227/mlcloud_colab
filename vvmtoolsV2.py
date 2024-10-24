@@ -14,6 +14,25 @@ class VVMtools(vvmtools_aaron.VVMTools):
         
         self.TIMESTEPS = len(glob.glob(f"{casepath}/archive/*Dynamic*.nc"))
 
+    def _Range_check_agrid(self, domain_range, conv_agrid:bool=False):
+        """
+        Default: conv_agrid set to FALSE because this function should be activated only when the conversion to a-grid is performed.
+        """
+        k1, k2, j1, j2, i1, i2 = domain_range
+        # Check domain_range on the x-direction
+        if i2 is not None and (i2 > 63):
+            logging.warning(f"Grid {i2} on the x-axis is on/over the borderline "+ 
+                            f"between two landtypes after interpolation (a-grid), "+ 
+                            f"automatically set to 63.")
+            i2           = 63
+            domain_range = (k1, k2, j1, j2, i1, i2)
+        if i1 is not None and (i1 < 64):
+            logging.warning(f"Grid {i1} on the x-axis is on/over the borderline "+ 
+                            f"between two landtypes after interpolation (a-grid), "+ 
+                            f"automatically set to 64.")
+            i1           = 64
+            domain_range = (k1, k2, j1, j2, i1, i2)
+        return domain_range
     
     def convert_to_agrid(self, var, time):
         """
@@ -69,21 +88,10 @@ class VVMtools(vvmtools_aaron.VVMTools):
         Default:  Calculate domain-average. TKE is only representative of turbulent motions when considering an area.
         Optional: Set print_shape=True to get the shape info of the retrieved u, v, w.
         """
-        k1, k2, j1, j2, i1, i2 = domain_range
         if conv_agrid:
             # Check domain_range on the x-direction
-            if i2 is not None and (i2 > 63):
-                logging.warning(f"Grid {i2} on the x-axis is on/over the borderline "+ 
-                                f"between two landtypes after interpolation (a-grid), "+ 
-                                f"automatically set to 63.")
-                i2           = 63
-                domain_range = (k1, k2, j1, j2, i1, i2)
-            if i1 is not None and (i1 < 64):
-                logging.warning(f"Grid {i1} on the x-axis is on/over the borderline "+ 
-                                f"between two landtypes after interpolation (a-grid), "+ 
-                                f"automatically set to 64.")
-                i1           = 64
-                domain_range = (k1, k2, j1, j2, i1, i2)
+            domain_range           = self._Range_check_agrid(domain_range, conv_agrid)
+            k1, k2, j1, j2, i1, i2 = domain_range
             # Get converted u, v, w
             u = self.convert_to_agrid('u', time)[k1:k2, j1:j2, i1:i2].copy()
             v = self.convert_to_agrid('v', time)[k1:k2, j1:j2, i1:i2].copy()
@@ -109,21 +117,10 @@ class VVMtools(vvmtools_aaron.VVMTools):
         Default:  Calculate domain-average. Enstrophy is only representative of turbulent motions when considering an area.
         Optional: Set print_shape=True to get the shape info of the retrieved eta, xi, zeta.
         """
-        k1, k2, j1, j2, i1, i2 = domain_range
         if conv_agrid:
             # Check domain_range on the x-direction
-            if i2 is not None and (i2 > 63):
-                logging.warning(f"Grid {i2} on the x-axis is on/over the borderline "+ 
-                                f"between two landtypes after interpolation (a-grid), "+ 
-                                f"automatically set to 63.")
-                i2           = 63
-                domain_range = (k1, k2, j1, j2, i1, i2)
-            if i1 is not None and (i1 < 64):
-                logging.warning(f"Grid {i1} on the x-axis is on/over the borderline "+ 
-                                f"between two landtypes after interpolation (a-grid), "+ 
-                                f"automatically set to 64.")
-                i1           = 64
-                domain_range = (k1, k2, j1, j2, i1, i2)
+            domain_range           = self._Range_check_agrid(domain_range, conv_agrid)
+            k1, k2, j1, j2, i1, i2 = domain_range
             # Get converted eta, xi, zeta
             eta  = self.convert_to_agrid('eta', time)[k1:k2, j1:j2, i1:i2].copy()
             xi   = self.convert_to_agrid('xi', time)[k1:k2, j1:j2, i1:i2].copy()
@@ -145,18 +142,43 @@ class VVMtools(vvmtools_aaron.VVMTools):
         # -> might be more convenient to entail variable info
         
         return np.nanmean((eta**2+xi**2+zeta**2), axis=(1, 2))
+    
+    def cal_turb_flux(self, time, domain_range, 
+                      wind_var, prop_var,
+                      conv_agrid:bool=True):
+        """
+        Params:
+        wind_var is the medium [u/v/w].
+        prop_var is the property transported by the medium.
+        """
+        if conv_agrid:
+            # Check domain_range on the x-direction
+            domain_range           = self._Range_check_agrid(domain_range, conv_agrid)
+            k1, k2, j1, j2, i1, i2 = domain_range
+            # Get converted variables
+            windvar  = self.convert_to_agrid(wind_var, time)[k1:k2, j1:j2, i1:i2].copy()
+            propvar  = self.convert_to_agrid(prop_var, time)[k1:k2, j1:j2, i1:i2].copy()
+        else:
+            windvar  = np.squeeze(self.get_var(wind_var, time, domain_range, numpy=True))
+            propvar  = np.squeeze(self.get_var(prop_var, time, domain_range, numpy=True))
+        # Calculate flux
+        product_bar  = np.nanmean(windvar*propvar, axis=(-2, -1))
+        wind_bar     = np.nanmean(windvar, axis=(-2, -1))
+        prop_bar     = np.nanmean(propvar, axis=(-2, -1))
+        return product_bar-(wind_bar*prop_bar)
         
 # --- Test --- #
 if __name__ == "__main__":
     test_case     = '/data/mlcloud/ch995334/VVM/DATA/pbl_mod_wfire_coastal_s1/'
     test_instance = VVMtools(test_case)
     # Annoucing function testing
-    print("Function testing: cal_enstrophy")
+    print("Function testing: cal_turb_flux")
     # Necessary variables and get result
-    # test_var    = 'eta'
+    test_var1   = 'w'
+    test_var2   = 'th'
     time_step   = 100
-    test_range  = (None, None, None, None, 64, None)
-    test_result = test_instance.cal_enstrophy(time=time_step, domain_range=test_range, print_shape=True)
+    test_range  = (None, None, None, None, None, 64)
+    test_result = test_instance.cal_turb_flux(time=time_step, domain_range=test_range, wind_var=test_var1, prop_var=test_var2, conv_agrid=False)
     # Testing result
     print("time_step:", time_step, "domain_range:", test_range)
     print(test_result)
