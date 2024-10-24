@@ -4,6 +4,7 @@ import pandas as pd
 import xarray as xr
 from datetime import *
 import glob
+import logging
 import vvmtools as vvmtools_aaron  # vvmtools V1
 
 # --- Build Class --- #
