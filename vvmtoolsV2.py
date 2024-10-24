@@ -99,18 +99,64 @@ class VVMtools(vvmtools_aaron.VVMTools):
         # -> might be more convenient to entail variable info
         
         return np.nanmean((u**2+v**2+w**2)/2, axis=(1, 2))
+    
+    def cal_enstrophy(self, time, domain_range, 
+                      conv_agrid:bool=True, 
+                      print_shape:bool=False):
+        """
+        Calculate enstrophy over the designated domain range and on the specified time step.
+        Default:  eta, xi, zeta will be converted to a-grid before calculation.
+        Default:  Calculate domain-average. Enstrophy is only representative of turbulent motions when considering an area.
+        Optional: Set print_shape=True to get the shape info of the retrieved eta, xi, zeta.
+        """
+        k1, k2, j1, j2, i1, i2 = domain_range
+        if conv_agrid:
+            # Check domain_range on the x-direction
+            if i2 is not None and (i2 > 63):
+                logging.warning(f"Grid {i2} on the x-axis is on/over the borderline "+ 
+                                f"between two landtypes after interpolation (a-grid), "+ 
+                                f"automatically set to 63.")
+                i2           = 63
+                domain_range = (k1, k2, j1, j2, i1, i2)
+            if i1 is not None and (i1 < 64):
+                logging.warning(f"Grid {i1} on the x-axis is on/over the borderline "+ 
+                                f"between two landtypes after interpolation (a-grid), "+ 
+                                f"automatically set to 64.")
+                i1           = 64
+                domain_range = (k1, k2, j1, j2, i1, i2)
+            # Get converted eta, xi, zeta
+            eta  = self.convert_to_agrid('eta', time)[k1:k2, j1:j2, i1:i2].copy()
+            xi   = self.convert_to_agrid('xi', time)[k1:k2, j1:j2, i1:i2].copy()
+            zeta = self.convert_to_agrid('zeta', time)[k1:k2, j1:j2, i1:i2].copy()
+        else: 
+            ## Check dimension for the dynamic eta
+            eta_temp = self.get_var('eta', 0, (1, 1, 1, 1, 1, 1), numpy=True)
+            if len(eta_temp.shape) < 3:
+                eta = np.squeeze(self.get_var("eta_2", time, domain_range, numpy=True))
+            else:
+                eta = np.squeeze(self.get_var("eta", time, domain_range, numpy=True))
+            ## Other components of vorticity
+            xi   = np.squeeze(self.get_var("xi", time, domain_range, numpy=True))
+            zeta = np.squeeze(self.get_var("zeta", time, domain_range, numpy=True))
+        # Provide shape info
+        if print_shape: print("Shape of eta, xi, zeta:", eta.shape, xi.shape, zeta.shape)
+
+        # POSSIBLE TODO: argument xarray:bool 
+        # -> might be more convenient to entail variable info
+        
+        return np.nanmean((eta**2+xi**2+zeta**2), axis=(1, 2))
         
 # --- Test --- #
 if __name__ == "__main__":
     test_case     = '/data/mlcloud/ch995334/VVM/DATA/pbl_mod_wfire_coastal_s1/'
     test_instance = VVMtools(test_case)
     # Annoucing function testing
-    print("Function testing: cal_TKE")
+    print("Function testing: cal_enstrophy")
     # Necessary variables and get result
     # test_var    = 'eta'
     time_step   = 100
     test_range  = (None, None, None, None, 64, None)
-    test_result = test_instance.cal_TKE(time=time_step, domain_range=test_range, print_shape=True, conv_agrid=False)
+    test_result = test_instance.cal_enstrophy(time=time_step, domain_range=test_range, print_shape=True)
     # Testing result
     print("time_step:", time_step, "domain_range:", test_range)
     print(test_result)
