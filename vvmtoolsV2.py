@@ -175,6 +175,8 @@ class VVMtools(vvmtools_aaron.VVMTools):
         """
         if method == 'wth':
             heights = self._pbl_height_wth(time, domain_range, conv_agrid)
+        elif method == 'th05k':
+            heights = self._pbl_height_th05k(time, domain_range, compute_mean_axis, conv_agrid)
         return heights
         
     def _pbl_height_wth(self, time, domain_range, 
@@ -210,19 +212,63 @@ class VVMtools(vvmtools_aaron.VVMTools):
                   'sign_change_mean_H':sign_change_heights, 
                   'neg_H_in_h1h2': neg_height_in_h1h2}
         return result
+    
+    def _pbl_height_th05k(self, time, domain_range,
+                          compute_mean_axis=None,
+                          conv_agrid:bool=True):
+        """
+        Default: No average. If compute_mean_axis is activated, theta mean is calculated before rendering PBL height.
+        params:
+        compute_mean_axis: can be None (default), 'x', 'y', 'xy'
+        """
+        # Check domain_range on the x-direction
+        if conv_agrid:
+            domain_range = self._Range_check_agrid(domain_range, conv_agrid)
+            k1, k2, j1, j2, i1, i2 = domain_range
+            z            = self.DIM['zc'][1:]
+            th           = self.convert_to_agrid('th', time)[k1:k2, j1:j2, i1:i2].copy()
+        else:
+            z            = self.DIM['zc']
+            th           = self.get_var('th', time, domain_range, numpy=True)
+        # Method: th05k
+        if compute_mean_axis is not None:
+            axis_opt = {'x':2, 'y':1, 'xy':(1, 2)}                # compute_mean_axis options
+            axis     = axis_opt[compute_mean_axis]
+            th_mean  = np.nanmean(th, axis=axis).copy()
+            if isinstance(axis, tuple):                           # compute_mean_axis=(1, 2)
+                result = self._find_levels_1d(th_mean, conv_agrid)
+            else:                                                 # compute_mean_axis=1 or 2
+                result = np.zeros(th_mean.shape[-1])
+                for ii in range(th_mean.shape[-1]):
+                    result[ii] = self._find_levels_1d(th_mean[:, ii], conv_agrid)
+        else:
+            result = np.zeros(th[0, ...].shape)
+            for j in range(th.shape[-2]):
+                for i in range(th.shape[-1]):
+                    result[j, i] = self._find_levels_1d(th[:, j, i], conv_agrid)
+        return result
+        
+    def _find_levels_1d(self, var, conv_agrid:bool):
+        target_var = var[0] + 0.5
+        zidx       = np.argmax(var >= target_var)
+        zidx       = np.where(np.any(var >= target_var), zidx, 0)   # set to 0 if no level satifies the condition
+        if conv_agrid:
+            return self.DIM['zc'][1:][zidx]
+        else:
+            return self.DIM['zc'][zidx]
         
 # --- Test --- #
 if __name__ == "__main__":
     test_case     = '/data/mlcloud/ch995334/VVM/DATA/pbl_mod_wfire_coastal_s1/'
     test_instance = VVMtools(test_case)
     # Annoucing function testing
-    print("Function testing: get_pbl_height and _pbl_height_wth")
+    print("Function testing: get_pbl_height and _pbl_height_th05k")
     # Necessary variables and get result
     test_var1   = 'w'
     test_var2   = 'th'
     time_step   = 300
-    test_range  = (None, None, None, None, 64, None)
-    test_result = test_instance.get_pbl_height(time=time_step, domain_range=test_range, method='wth')
+    test_range  = (None, None, None, None, None, 64)
+    test_result = test_instance.get_pbl_height(time=time_step, domain_range=test_range, method='th05k', compute_mean_axis='y')
     # Testing result
     print("time_step:", time_step, "domain_range:", test_range)
     print(test_result)
