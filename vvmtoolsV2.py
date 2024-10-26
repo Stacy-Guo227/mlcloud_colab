@@ -13,6 +13,7 @@ class VVMtools(vvmtools_aaron.VVMTools):
         super().__init__(casepath)
         
         self.TIMESTEPS = len(glob.glob(f"{casepath}/archive/*Dynamic*.nc"))
+        self.MEANAXIS  = {'x':-1, 'y':-2, 'xy':(-1, -2)}    # compute_mean_axis options
 
     def _Range_check_agrid(self, domain_range, conv_agrid:bool=False):
         """
@@ -232,8 +233,7 @@ class VVMtools(vvmtools_aaron.VVMTools):
             th           = self.get_var('th', time, domain_range, numpy=True)
         # Method: th05k
         if compute_mean_axis is not None:
-            axis_opt = {'x':2, 'y':1, 'xy':(1, 2)}                # compute_mean_axis options
-            axis     = axis_opt[compute_mean_axis]
+            axis     = self.MEANAXIS[compute_mean_axis]
             th_mean  = np.nanmean(th, axis=axis).copy()
             if isinstance(axis, tuple):                           # compute_mean_axis=(1, 2)
                 result = self._find_levels_1d(th_mean, conv_agrid)
