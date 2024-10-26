@@ -178,6 +178,8 @@ class VVMtools(vvmtools_aaron.VVMTools):
             heights = self._pbl_height_wth(time, domain_range, conv_agrid)
         elif method == 'th05k':
             heights = self._pbl_height_th05k(time, domain_range, compute_mean_axis, conv_agrid)
+        elif method == 'dthdz':
+            heights = self._pbl_height_dthtz(time, domain_range, compute_mean_axis, conv_agrid)
         return heights
         
     def _pbl_height_wth(self, time, domain_range, 
@@ -257,18 +259,51 @@ class VVMtools(vvmtools_aaron.VVMTools):
         else:
             return self.DIM['zc'][zidx]
         
+    def _pbl_height_dthtz(self, time, domain_range,
+                          compute_mean_axis=None,
+                          conv_agrid:bool=True):
+        # Check domain_range on the x-direction
+        if conv_agrid:
+            domain_range = self._Range_check_agrid(domain_range, conv_agrid)
+            k1, k2, j1, j2, i1, i2 = domain_range
+            z            = self.DIM['zc'][1:]
+            th           = self.convert_to_agrid('th', time)[k1:k2, j1:j2, i1:i2].copy()
+        else:
+            z            = self.DIM['zc']
+            th           = self.get_var('th', time, domain_range, numpy=True)
+        # Method: dthdz
+        if compute_mean_axis is not None:
+            axis     = self.MEANAXIS[compute_mean_axis]
+            th_mean  = np.nanmean(th, axis=axis).copy()
+            slope    = (th_mean[1:, ...]-th_mean[:-1, ...])/(z[2]-z[1])
+            slope_max_idx = np.argmax(slope, axis=0)
+            if isinstance(axis, tuple):                           # compute_mean_axis=(1, 2)
+                result = z[slope_max_idx]
+            else:                                                 # compute_mean_axis=1 or 2
+                result = np.zeros(th_mean.shape[-1])
+                for ii in range(th_mean.shape[-1]):
+                    result[ii] = z[slope_max_idx[ii]]
+        else:
+            slope         = (th[1:, ...]-th[:-1, ...])/(z[2]-z[1])
+            slope_max_idx = np.argmax(slope, axis=0)
+            result = np.zeros(th[0, ...].shape)
+            for j in range(th.shape[-2]):
+                for i in range(th.shape[-1]):
+                    result[j, i] = z[slope_max_idx[j, i]]
+        return result
+        
 # --- Test --- #
 if __name__ == "__main__":
     test_case     = '/data/mlcloud/ch995334/VVM/DATA/pbl_mod_wfire_coastal_s1/'
     test_instance = VVMtools(test_case)
     # Annoucing function testing
-    print("Function testing: get_pbl_height and _pbl_height_th05k")
+    print("Function testing: get_pbl_height and _pbl_height_dthdz")
     # Necessary variables and get result
     test_var1   = 'w'
     test_var2   = 'th'
-    time_step   = 300
-    test_range  = (None, None, None, None, None, 64)
-    test_result = test_instance.get_pbl_height(time=time_step, domain_range=test_range, method='th05k', compute_mean_axis='y')
+    time_step   = 130
+    test_range  = (None, None, None, None, 64, None)
+    test_result = test_instance.get_pbl_height(time=time_step, domain_range=test_range, method='dthdz', compute_mean_axis='xy')
     # Testing result
     print("time_step:", time_step, "domain_range:", test_range)
     print(test_result)
