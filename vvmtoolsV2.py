@@ -155,18 +155,23 @@ class VVMtools(vvmtools_aaron.VVMTools):
         if conv_agrid:
             # Check domain_range on the x-direction
             domain_range           = self._Range_check_agrid(domain_range, conv_agrid)
-            k1, k2, j1, j2, i1, i2 = domain_range
-            # Get converted variables
-            windvar  = self.convert_to_agrid(wind_var, time)[k1:k2, j1:j2, i1:i2].copy()
-            propvar  = self.convert_to_agrid(prop_var, time)[k1:k2, j1:j2, i1:i2].copy()
+            windvar  = self.convert_to_agrid(wind_var, time)
+            propvar  = self.convert_to_agrid(prop_var, time)
         else:
-            windvar  = np.squeeze(self.get_var(wind_var, time, domain_range, numpy=True))
-            propvar  = np.squeeze(self.get_var(prop_var, time, domain_range, numpy=True))
+            windvar  = np.squeeze(self.get_var(wind_var, time, numpy=True))
+            propvar  = np.squeeze(self.get_var(prop_var, time, numpy=True))
+        # Calculate entire-domain mean
+        wind_bar = np.nanmean(windvar, axis=(-2, -1))
+        prop_bar = np.nanmean(propvar, axis=(-2, -1))
         # Calculate flux
-        product_bar  = np.nanmean(windvar*propvar, axis=(-2, -1))
-        wind_bar     = np.nanmean(windvar, axis=(-2, -1))
-        prop_bar     = np.nanmean(propvar, axis=(-2, -1))
-        return product_bar-(wind_bar*prop_bar)
+        k1, k2, j1, j2, i1, i2 = domain_range
+        wind_reg = windvar[k1:k2, j1:j2, i1:i2].copy()
+        wind_bar = np.repeat(wind_bar[..., np.newaxis], axis=1, repeats=wind_reg.shape[-2])
+        wind_bar = np.repeat(wind_bar[..., np.newaxis], axis=2, repeats=wind_reg.shape[-1])
+        prop_reg = propvar[k1:k2, j1:j2, i1:i2].copy()
+        prop_bar = np.repeat(prop_bar[..., np.newaxis], axis=1, repeats=prop_reg.shape[-2])
+        prop_bar = np.repeat(prop_bar[..., np.newaxis], axis=2, repeats=prop_reg.shape[-1])
+        return (wind_reg-wind_bar)*(prop_reg-prop_bar)
     
     def get_pbl_height(self, time, domain_range, 
                        method:str, compute_mean_axis=None, 
@@ -297,14 +302,15 @@ if __name__ == "__main__":
     test_case     = '/data/mlcloud/ch995334/VVM/DATA/pbl_mod_wfire_coastal_s1/'
     test_instance = VVMtools(test_case)
     # Annoucing function testing
-    print("Function testing: get_pbl_height and _pbl_height_dthdz")
+    print("Function testing: cal_turb_flux")
     # Necessary variables and get result
     test_var1   = 'w'
     test_var2   = 'th'
-    time_step   = 130
-    test_range  = (None, None, None, None, 64, None)
-    test_result = test_instance.get_pbl_height(time=time_step, domain_range=test_range, method='dthdz', compute_mean_axis='xy')
+    time_step   = 180
+    test_range  = (None, None, None, None, None, 64)
+    test_result = test_instance.cal_turb_flux(time=time_step, domain_range=test_range, wind_var=test_var1, prop_var=test_var2)
     # Testing result
     print("time_step:", time_step, "domain_range:", test_range)
-    print(test_result)
+    # print(test_result)
+    print(np.nanmean(test_result, axis=(1, 2)))
     print(test_result.shape)
