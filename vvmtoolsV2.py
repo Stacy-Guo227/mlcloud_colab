@@ -174,7 +174,7 @@ class VVMtools(vvmtools_aaron.VVMTools):
         return (wind_reg-wind_bar)*(prop_reg-prop_bar)
     
     def get_pbl_height(self, time, domain_range, 
-                       method:str, compute_mean_axis=None, 
+                       method:str, threshold:float=0., compute_mean_axis=None, 
                        conv_agrid:bool=True):
         """
         Available method now includes: 'wth', 'th05k', 'dthdz'
@@ -185,9 +185,20 @@ class VVMtools(vvmtools_aaron.VVMTools):
             heights = self._pbl_height_th05k(time, domain_range, compute_mean_axis, conv_agrid)
         elif method == 'dthdz':
             heights = self._pbl_height_dthtz(time, domain_range, compute_mean_axis, conv_agrid)
+        elif method in ('tke', 'TKE'):
+            tke     = self.cal_TKE(time, domain_range, conv_agrid)
+            hcidx   = np.nanargmin(abs(tke-threshold))
+            heights = self.DIM['zc'][1:][hcidx] if conv_agrid is True else self.DIM['zc'][hcidx]
+        elif method == 'enstrophy':
+            enstrophy= self.cal_enstrophy(time, domain_range, conv_agrid)
+            hcidx   = np.nanargmin(abs(enstrophy-threshold))
+            heights = self.DIM['zc'][1:][hcidx] if conv_agrid is True else self.DIM['zc'][hcidx]
+        else:
+            raise ValueError("Unrecognized method for defining PBL height. Please choose from ['wth', 'th05k', 'dthdz', 'tke', 'enstrophy'].")
         return heights
         
     def _pbl_height_wth(self, time, domain_range, 
+                        threshold:float, 
                         conv_agrid:bool=True):
         """
         Default: domain-average (from the calculation of flux)
@@ -199,27 +210,7 @@ class VVMtools(vvmtools_aaron.VVMTools):
         else:
             z            = self.DIM['zc']
         # Method: wth
-        wth_flux            = self.cal_turb_flux(time, domain_range, 'w', 'th', conv_agrid)
-        sign_change_indices = (np.arange(z.shape[0]-1))[(wth_flux[:-1]*wth_flux[1:])<=0]    # apply to z
-        if np.nanmax(wth_flux) < 0.005:
-            sign_change_heights = np.array([0])
-            neg_height_in_h1h2  = np.array([0])
-        else:
-            if sign_change_indices.shape[0]<1:           # no sign-change
-                sign_change_heights = np.array([np.nan])
-                neg_height_in_h1h2  = np.nan
-            elif (sign_change_indices.shape[0]>0)&(sign_change_indices.shape[0]<2):  # only 1 sign-change
-                sign_change_heights = (z[sign_change_indices]+z[sign_change_indices+1])/2
-                neg_height_in_h1h2  = np.nan
-            else:                    
-                sign_change_heights= (z[sign_change_indices]+z[sign_change_indices+1])/2
-                neg_idx_in_h1h2    = np.argmin(wth_flux[sign_change_indices[0]:sign_change_indices[1]+1])
-                neg_height_in_h1h2 = (z[sign_change_indices[0]+neg_idx_in_h1h2]+z[sign_change_indices[0]+neg_idx_in_h1h2+1])/2
-        
-        result = {'sign_change_indices':sign_change_indices, 
-                  'sign_change_mean_H':sign_change_heights, 
-                  'neg_H_in_h1h2': neg_height_in_h1h2}
-        return result
+        pass
     
     def _pbl_height_th05k(self, time, domain_range,
                           compute_mean_axis=None,
@@ -302,15 +293,14 @@ if __name__ == "__main__":
     test_case     = '/data/mlcloud/ch995334/VVM/DATA/pbl_mod_wfire_coastal_s1/'
     test_instance = VVMtools(test_case)
     # Annoucing function testing
-    print("Function testing: cal_turb_flux")
+    print("Function testing: get_pbl_height")
     # Necessary variables and get result
     test_var1   = 'w'
     test_var2   = 'th'
     time_step   = 180
-    test_range  = (None, None, None, None, None, 64)
-    test_result = test_instance.cal_turb_flux(time=time_step, domain_range=test_range, wind_var=test_var1, prop_var=test_var2)
+    test_range  = (None, None, None, None, 64, None)
+    test_result = test_instance.get_pbl_height(time=time_step, domain_range=test_range, method='tke', threshold=1e-1)
     # Testing result
     print("time_step:", time_step, "domain_range:", test_range)
-    # print(test_result)
-    print(np.nanmean(test_result, axis=(1, 2)))
+    print(test_result)
     print(test_result.shape)
