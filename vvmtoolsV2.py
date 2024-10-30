@@ -172,45 +172,15 @@ class VVMtools(vvmtools_aaron.VVMTools):
         prop_bar = np.repeat(prop_bar[..., np.newaxis], axis=1, repeats=prop_reg.shape[-2])
         prop_bar = np.repeat(prop_bar[..., np.newaxis], axis=2, repeats=prop_reg.shape[-1])
         return (wind_reg-wind_bar)*(prop_reg-prop_bar)
-    
-    def get_pbl_height(self, time, domain_range, 
-                       method:str, threshold:float=0., compute_mean_axis=None, 
-                       conv_agrid:bool=True):
-        """
-        Available method now includes: 'wth', 'th05k', 'dthdz'
-        """
-        if method == 'wth':
-            heights = self._pbl_height_wth(time, domain_range, conv_agrid)
-        elif method == 'th05k':
-            heights = self._pbl_height_th05k(time, domain_range, compute_mean_axis, conv_agrid)
-        elif method == 'dthdz':
-            heights = self._pbl_height_dthtz(time, domain_range, compute_mean_axis, conv_agrid)
-        elif method in ('tke', 'TKE'):
-            tke     = self.cal_TKE(time, domain_range, conv_agrid)
-            hcidx   = np.nanargmin(abs(tke-threshold))
-            heights = self.DIM['zc'][1:][hcidx] if conv_agrid is True else self.DIM['zc'][hcidx]
-        elif method == 'enstrophy':
-            enstrophy= self.cal_enstrophy(time, domain_range, conv_agrid)
-            hcidx   = np.nanargmin(abs(enstrophy-threshold))
-            heights = self.DIM['zc'][1:][hcidx] if conv_agrid is True else self.DIM['zc'][hcidx]
-        else:
-            raise ValueError("Unrecognized method for defining PBL height. Please choose from ['wth', 'th05k', 'dthdz', 'tke', 'enstrophy'].")
-        return heights
         
-    def _pbl_height_wth(self, time, domain_range, 
-                        threshold:float, 
-                        conv_agrid:bool=True):
-        """
-        Default: domain-average (from the calculation of flux)
-        """
-        # Check domain_range on the x-direction
+    def _find_levels_1d(self, var, conv_agrid:bool):
+        target_var = var[0] + 0.5
+        zidx       = np.argmax(var >= target_var)
+        zidx       = np.where(np.any(var >= target_var), zidx, 0)   # set to 0 if no level satifies the condition
         if conv_agrid:
-            domain_range = self._Range_check_agrid(domain_range, conv_agrid)
-            z            = self.DIM['zc'][1:]
+            return self.DIM['zc'][1:][zidx]
         else:
-            z            = self.DIM['zc']
-        # Method: wth
-        pass
+            return self.DIM['zc'][zidx]
     
     def _pbl_height_th05k(self, time, domain_range,
                           compute_mean_axis=None,
@@ -246,15 +216,6 @@ class VVMtools(vvmtools_aaron.VVMTools):
                     result[j, i] = self._find_levels_1d(th[:, j, i], conv_agrid)
         return result
         
-    def _find_levels_1d(self, var, conv_agrid:bool):
-        target_var = var[0] + 0.5
-        zidx       = np.argmax(var >= target_var)
-        zidx       = np.where(np.any(var >= target_var), zidx, 0)   # set to 0 if no level satifies the condition
-        if conv_agrid:
-            return self.DIM['zc'][1:][zidx]
-        else:
-            return self.DIM['zc'][zidx]
-        
     def _pbl_height_dthtz(self, time, domain_range,
                           compute_mean_axis=None,
                           conv_agrid:bool=True):
@@ -288,6 +249,45 @@ class VVMtools(vvmtools_aaron.VVMTools):
                     result[j, i] = z[slope_max_idx[j, i]]
         return result
         
+    def _pbl_height_wth(self, time, domain_range, 
+                        threshold:float, 
+                        conv_agrid:bool=True):
+        """
+        Default: domain-average (from the calculation of flux)
+        """
+        # Check domain_range on the x-direction
+        if conv_agrid:
+            domain_range = self._Range_check_agrid(domain_range, conv_agrid)
+            z            = self.DIM['zc'][1:]
+        else:
+            z            = self.DIM['zc']
+        # Method: wth
+        pass
+    
+    def get_pbl_height(self, time, domain_range, 
+                       method:str, threshold:float=0., compute_mean_axis=None, 
+                       conv_agrid:bool=True):
+        """
+        Available method now includes: 'wth', 'th05k', 'dthdz'
+        """
+        if method == 'wth':
+            heights = self._pbl_height_wth(time, domain_range, conv_agrid)
+        elif method == 'th05k':
+            heights = self._pbl_height_th05k(time, domain_range, compute_mean_axis, conv_agrid)
+        elif method == 'dthdz':
+            heights = self._pbl_height_dthtz(time, domain_range, compute_mean_axis, conv_agrid)
+        elif method in ('tke', 'TKE'):
+            tke     = self.cal_TKE(time, domain_range, conv_agrid)
+            hcidx   = np.nanargmin(abs(tke-threshold))
+            heights = self.DIM['zc'][1:][hcidx] if conv_agrid is True else self.DIM['zc'][hcidx]
+        elif method == 'enstrophy':
+            enstrophy= self.cal_enstrophy(time, domain_range, conv_agrid)
+            hcidx   = np.nanargmin(abs(enstrophy-threshold))
+            heights = self.DIM['zc'][1:][hcidx] if conv_agrid is True else self.DIM['zc'][hcidx]
+        else:
+            raise ValueError("Unrecognized method for defining PBL height. Please choose from ['wth', 'th05k', 'dthdz', 'tke', 'enstrophy'].")
+        return heights
+        
 # --- Test --- #
 if __name__ == "__main__":
     test_case     = '/data/mlcloud/ch995334/VVM/DATA/pbl_mod_wfire_coastal_s1/'
@@ -299,7 +299,7 @@ if __name__ == "__main__":
     test_var2   = 'th'
     time_step   = 180
     test_range  = (None, None, None, None, 64, None)
-    test_result = test_instance.get_pbl_height(time=time_step, domain_range=test_range, method='tke', threshold=1e-1)
+    test_result = test_instance.get_pbl_height(time=time_step, domain_range=test_range, method='th05k', compute_mean_axis='xy')
     # Testing result
     print("time_step:", time_step, "domain_range:", test_range)
     print(test_result)
