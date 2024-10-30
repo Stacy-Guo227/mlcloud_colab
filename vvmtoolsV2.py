@@ -14,71 +14,51 @@ class VVMtools(vvmtools_aaron.VVMTools):
         
         self.TIMESTEPS = len(glob.glob(f"{casepath}/archive/*Dynamic*.nc"))
         self.MEANAXIS  = {'x':-1, 'y':-2, 'xy':(-1, -2)}    # compute_mean_axis options
-
-    def _Range_check_agrid(self, domain_range, conv_agrid:bool=False):
-        """
-        Default: conv_agrid set to FALSE because this function should be activated only when the conversion to a-grid is performed.
-        """
-        k1, k2, j1, j2, i1, i2 = domain_range
-        # Check domain_range on the x-direction
-        if i2 is not None and (i2 > 63):
-            logging.warning(f"Grid {i2} on the x-axis is on/over the borderline "+ 
-                            f"between two landtypes after interpolation (a-grid), "+ 
-                            f"automatically set to 63.")
-            i2           = 63
-            domain_range = (k1, k2, j1, j2, i1, i2)
-        if i1 is not None and (i1 < 64):
-            logging.warning(f"Grid {i1} on the x-axis is on/over the borderline "+ 
-                            f"between two landtypes after interpolation (a-grid), "+ 
-                            f"automatically set to 64.")
-            i1           = 64
-            domain_range = (k1, k2, j1, j2, i1, i2)
-        return domain_range
     
-    def convert_to_agrid(self, var, time):
+    def convert_to_agrid(self, var, time, domain_range=(None, None, None, None, None, None)):
         """
-        Default: Interpolate the entire domain on the designated time step.
+        
         """
         # Wind field (u, v, w)
         if var == 'u':
-            u_org   = self.get_var('u', time, numpy=True)
+            u_org   = self.get_var('u', time, domain_range, numpy=True)
             u_agrid = (u_org[..., 1:]+u_org[..., :-1])/2   # itp_dim: (z, y, x) -> (x)
-            return u_agrid[1:, :-1, :]                     # discard the last y and first z
+            return u_agrid[1:, 1:, :]                      # discard the first y and z
         elif var == 'v':
-            v_org   = self.get_var('v', time, numpy=True)
+            v_org   = self.get_var('v', time, domain_range, numpy=True)
             v_agrid = (v_org[:, 1:, :]+v_org[:, :-1, :])/2 # itp_dim: (z, y, x) -> (y)
-            return v_agrid[1:, :, :-1]                     # discard the last x and first z
+            return v_agrid[1:, :, 1:]                      # discard the first x and z
         elif var == 'w':
-            w_org   = self.get_var('w', time, numpy=True)
+            w_org   = self.get_var('w', time, domain_range, numpy=True)
             w_agrid = (w_org[1:, ...]+w_org[:-1, ...])/2   # itp_dim: (z, y, x) -> (x)
-            return w_agrid[:, :-1, :-1]                    # discard the last x and y
+            return w_agrid[:, 1:, 1:]                      # discard the first x and y
         
         # Vorticity field(eta, xi, zeta)
         elif var == 'eta':
             # Check dimension for the dynamic eta
             eta_temp = self.get_var('eta', 0, (1, 1, 1, 1, 1, 1), numpy=True)
             if len(eta_temp.shape) < 3:
-                eta_org = self.get_var('eta_2', time, numpy=True)
+                eta_org = self.get_var('eta_2', time, domain_range, numpy=True)
             else:
-                eta_org = self.get_var('eta', time, numpy=True)
+                eta_org = self.get_var('eta', time, domain_range, numpy=True)
             eta_agrid   = (eta_org[1:, :, 1:] +eta_org[1:, :, :-1]+      # itp_dim: (z, y, x)
                            eta_org[:-1, :, 1:]+eta_org[:-1, :, :-1])/4.  # -> (z, x)
-            return eta_agrid[:, :-1, :]                                  # discard the last y
+            return eta_agrid[:, 1:, :]                                   # discard the first y
         elif var == 'xi':
-            xi_org      = self.get_var('xi', time, numpy=True)  
+            xi_org      = self.get_var('xi', time, domain_range, numpy=True)  
             xi_agrid    = (xi_org[1:, 1:, :] +xi_org[1:, :-1, :]+        # itp_dim: (z, y, x)
                            xi_org[:-1, 1:, :]+xi_org[:-1, :-1, :])/4.    # -> (z, y)
-            return xi_agrid[:, :, :-1]                                   # discard the last x
+            return xi_agrid[:, :, 1:]                                    # discard the first x
         elif var == 'zeta':
-            zeta_org    = self.get_var('zeta', time, numpy=True)
+            zeta_org    = self.get_var('zeta', time, domain_range, numpy=True)
             zeta_agrid  = (zeta_org[:, 1:, 1:] +zeta_org[:, 1:, :-1]+    # itp_dim: (z, y, x)
                            zeta_org[:, :-1, 1:]+zeta_org[:, :-1, :-1])/4.# -> (y, x)
             return zeta_agrid[1:, :, :]                                  # discard the first z
         
         # Theta (standard)
         elif var == 'th':
-            th_org      = self.get_var('th', time, numpy=True)
-            return th_org[1:, :-1, :-1]       # discard the first z, last y, last x
+            th_org      = self.get_var('th', time, domain_range, numpy=True)
+            return th_org[1:, 1:, 1:]         # discard the first z, y, x
         
     def cal_TKE(self, time, domain_range, 
                 conv_agrid:bool=True, 
@@ -90,13 +70,9 @@ class VVMtools(vvmtools_aaron.VVMTools):
         Optional: Set print_shape=True to get the shape info of the retrieved u, v, w.
         """
         if conv_agrid:
-            # Check domain_range on the x-direction
-            domain_range           = self._Range_check_agrid(domain_range, conv_agrid)
-            k1, k2, j1, j2, i1, i2 = domain_range
-            # Get converted u, v, w
-            u = self.convert_to_agrid('u', time)[k1:k2, j1:j2, i1:i2].copy()
-            v = self.convert_to_agrid('v', time)[k1:k2, j1:j2, i1:i2].copy()
-            w = self.convert_to_agrid('w', time)[k1:k2, j1:j2, i1:i2].copy()
+            u = self.convert_to_agrid('u', time, domain_range)
+            v = self.convert_to_agrid('v', time, domain_range)
+            w = self.convert_to_agrid('w', time, domain_range)
         else:      
             u = np.squeeze(self.get_var("u", time, domain_range, numpy=True))
             v = np.squeeze(self.get_var("v", time, domain_range, numpy=True))
@@ -119,13 +95,9 @@ class VVMtools(vvmtools_aaron.VVMTools):
         Optional: Set print_shape=True to get the shape info of the retrieved eta, xi, zeta.
         """
         if conv_agrid:
-            # Check domain_range on the x-direction
-            domain_range           = self._Range_check_agrid(domain_range, conv_agrid)
-            k1, k2, j1, j2, i1, i2 = domain_range
-            # Get converted eta, xi, zeta
-            eta  = self.convert_to_agrid('eta', time)[k1:k2, j1:j2, i1:i2].copy()
-            xi   = self.convert_to_agrid('xi', time)[k1:k2, j1:j2, i1:i2].copy()
-            zeta = self.convert_to_agrid('zeta', time)[k1:k2, j1:j2, i1:i2].copy()
+            eta  = self.convert_to_agrid('eta', time, domain_range)
+            xi   = self.convert_to_agrid('xi', time, domain_range)
+            zeta = self.convert_to_agrid('zeta', time, domain_range)
         else: 
             ## Check dimension for the dynamic eta
             eta_temp = self.get_var('eta', 0, (1, 1, 1, 1, 1, 1), numpy=True)
@@ -153,25 +125,24 @@ class VVMtools(vvmtools_aaron.VVMTools):
         prop_var is the property transported by the medium.
         """
         if conv_agrid:
-            # Check domain_range on the x-direction
-            domain_range           = self._Range_check_agrid(domain_range, conv_agrid)
             windvar  = self.convert_to_agrid(wind_var, time)
             propvar  = self.convert_to_agrid(prop_var, time)
+            windreg  = self.convert_to_agrid(wind_var, time, domain_range)
+            propreg  = self.convert_to_agrid(prop_var, time, domain_range)
         else:
             windvar  = np.squeeze(self.get_var(wind_var, time, numpy=True))
             propvar  = np.squeeze(self.get_var(prop_var, time, numpy=True))
-        # Calculate entire-domain mean
+            windreg  = windvar[k1:k2, j1:j2, i1:i2].copy()
+            propreg  = propvar[k1:k2, j1:j2, i1:i2].copy()
+        # Calculate entire-domain mean and broadcast
         wind_bar = np.nanmean(windvar, axis=(-2, -1))
         prop_bar = np.nanmean(propvar, axis=(-2, -1))
-        # Calculate flux
-        k1, k2, j1, j2, i1, i2 = domain_range
-        wind_reg = windvar[k1:k2, j1:j2, i1:i2].copy()
-        wind_bar = np.repeat(wind_bar[..., np.newaxis], axis=1, repeats=wind_reg.shape[-2])
-        wind_bar = np.repeat(wind_bar[..., np.newaxis], axis=2, repeats=wind_reg.shape[-1])
-        prop_reg = propvar[k1:k2, j1:j2, i1:i2].copy()
-        prop_bar = np.repeat(prop_bar[..., np.newaxis], axis=1, repeats=prop_reg.shape[-2])
-        prop_bar = np.repeat(prop_bar[..., np.newaxis], axis=2, repeats=prop_reg.shape[-1])
-        return (wind_reg-wind_bar)*(prop_reg-prop_bar)
+        wind_bar = np.repeat(wind_bar[..., np.newaxis], axis=1, repeats=windreg.shape[-2])
+        wind_bar = np.repeat(wind_bar[..., np.newaxis], axis=2, repeats=windreg.shape[-1])
+        prop_bar = np.repeat(prop_bar[..., np.newaxis], axis=1, repeats=propreg.shape[-2])
+        prop_bar = np.repeat(prop_bar[..., np.newaxis], axis=2, repeats=propreg.shape[-1])
+        # Return flux
+        return (windreg-wind_bar)*(propreg-prop_bar)
         
     def _find_levels_1d(self, var, conv_agrid:bool):
         target_var = var[0] + 0.5
@@ -190,15 +161,12 @@ class VVMtools(vvmtools_aaron.VVMTools):
         params:
         compute_mean_axis: can be None (default), 'x', 'y', 'xy'
         """
-        # Check domain_range on the x-direction
         if conv_agrid:
-            domain_range = self._Range_check_agrid(domain_range, conv_agrid)
-            k1, k2, j1, j2, i1, i2 = domain_range
             z            = self.DIM['zc'][1:]
-            th           = self.convert_to_agrid('th', time)[k1:k2, j1:j2, i1:i2].copy()
+            th           = self.convert_to_agrid('th', time, domain_range)
         else:
             z            = self.DIM['zc']
-            th           = self.get_var('th', time, domain_range, numpy=True)
+            th           = np.squeeze(self.get_var('th', time, domain_range, numpy=True))
         # Method: th05k
         if compute_mean_axis is not None:
             axis     = self.MEANAXIS[compute_mean_axis]
@@ -219,12 +187,9 @@ class VVMtools(vvmtools_aaron.VVMTools):
     def _pbl_height_dthtz(self, time, domain_range,
                           compute_mean_axis=None,
                           conv_agrid:bool=True):
-        # Check domain_range on the x-direction
         if conv_agrid:
-            domain_range = self._Range_check_agrid(domain_range, conv_agrid)
-            k1, k2, j1, j2, i1, i2 = domain_range
             z            = self.DIM['zc'][1:]
-            th           = self.convert_to_agrid('th', time)[k1:k2, j1:j2, i1:i2].copy()
+            th           = self.convert_to_agrid('th', time, domain_range)
         else:
             z            = self.DIM['zc']
             th           = self.get_var('th', time, domain_range, numpy=True)
@@ -255,9 +220,7 @@ class VVMtools(vvmtools_aaron.VVMTools):
         """
         Default: domain-average (from the calculation of flux)
         """
-        # Check domain_range on the x-direction
         if conv_agrid:
-            domain_range = self._Range_check_agrid(domain_range, conv_agrid)
             z            = self.DIM['zc'][1:]
         else:
             z            = self.DIM['zc']
@@ -299,7 +262,7 @@ if __name__ == "__main__":
     test_var2   = 'th'
     time_step   = 180
     test_range  = (None, None, None, None, 64, None)
-    test_result = test_instance.get_pbl_height(time=time_step, domain_range=test_range, method='th05k', compute_mean_axis='xy')
+    test_result = test_instance.get_pbl_height(time=time_step, domain_range=test_range, method='tke', threshold=1e-1)
     # Testing result
     print("time_step:", time_step, "domain_range:", test_range)
     print(test_result)
