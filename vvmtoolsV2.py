@@ -259,6 +259,7 @@ class VVMtools(vvmtools_aaron.VVMTools):
         """
         if conv_agrid:
             z            = self.DIM['zc'][1:]
+            w            = self.get_var('w', time, domain_range, numpy=True)
             th           = self.convert_to_agrid('th', time, domain_range)
         else:
             z            = self.DIM['zc']
@@ -285,7 +286,8 @@ class VVMtools(vvmtools_aaron.VVMTools):
         return result
         
     def _pbl_height_wth(self, time, domain_range, 
-                        threshold:float, 
+                        levs:list=['top_positive', 'min', 'top_negative'],
+                        threshold:float=1e-3, 
                         conv_agrid:bool=True):
         """
         Find the PBL height based on levels with vertical theta flux changeing signs and its minimum.
@@ -304,11 +306,42 @@ class VVMtools(vvmtools_aaron.VVMTools):
         :rtype : float
         """
         if conv_agrid:
-            z            = self.DIM['zc'][1:]
+            z   = self.DIM['zc'][1:]
+            wth = self.cal_turb_flux(time, domain_range, 'w', 'th')
         else:
-            z            = self.DIM['zc']
+            z   = self.DIM['zc']
+            wth = self.cal_turb_flux(time, domain_range, 'w', 'th', conv_agrid=False)
         # Method: wth
-        pass
+        axis    = self.MEANAXIS['xy']
+        wth_mean= np.nanmean(wth,  axis=axis).copy()
+
+        top_positive = []
+        min_wth = []
+        top_negative = []
+
+        if np.max(wth_mean)<threshold:
+            top_positive = 0
+            min_wth = 0
+            top_negative = 0
+        elif np.max(wth_mean[np.argmin(wth_mean):])<threshold:
+            top_positive = z[np.where((wth_mean[1:]*wth_mean[:-1])<0)[0][0]]
+            min_wth = z[np.nanargmin(wth_mean)]
+            top_negative = 0
+        else:
+            top_positive = z[np.where((wth_mean[1:]*wth_mean[:-1])<0)[0][0]]
+            min_wth = z[np.nanargmin(wth_mean)]
+            top_negative = z[np.where((wth_mean[1:]*wth_mean[:-1])<0)[0][1]]
+        height=[]
+        for lev in levs:
+            if lev == 'top_positive':
+                height.append(top_positive)
+            elif lev == 'min':
+                height.append(min_wth)
+            elif lev == 'top_negative':
+                height.append(top_negative)
+            else:
+                print('No parameter:', lev)
+        return np.array(height)
     
     def get_pbl_height(self, time, domain_range, 
                        method:str, threshold:float=0., compute_mean_axis=None, 
@@ -334,7 +367,7 @@ class VVMtools(vvmtools_aaron.VVMTools):
         :rtype : float or np.ndarray
         """
         if method == 'wth':
-            heights = self._pbl_height_wth(time, domain_range, conv_agrid)
+            heights = self._pbl_height_wth(time, domain_range, threshold=threshold, conv_agrid=conv_agrid)
         elif method == 'th05k':
             heights = self._pbl_height_th05k(time, domain_range, compute_mean_axis, conv_agrid)
         elif method == 'dthdz':
