@@ -1,10 +1,11 @@
 # --- Import --- #
 import numpy as np
-import pandas as pd
 import xarray as xr
 from datetime import *
 import glob
 import logging
+from functools import partial
+import multiprocessing
 import vvmtools as vvmtools_aaron  # vvmtools V1
 
 # --- Build Class --- #
@@ -349,19 +350,69 @@ class VVMtools(vvmtools_aaron.VVMTools):
         else:
             raise ValueError("Unrecognized method for defining PBL height. Please choose from ['wth', 'th05k', 'dthdz', 'tke', 'enstrophy'].")
         return heights
+    
+    def func_time_parallel(self, 
+                           func, 
+                           time_steps=None, # Signature shows np.arange(0, 720, 1)
+                           func_config=None,
+                           cores=5):
+        """
+        Modify the original func_time_parallel about the partial function pre-binding, so that this method could apply to functions with parameter names other than `func_config`.
+
+        :param func: The time-dependent function to be parallelized. It should accept two arguments: 
+                     the time step `t` and a config object (containing any additional parameters).
+        :type func: callable
+        :param time_steps: List or array of time steps over which to apply the function. Defaults to `np.arange(0, 720, 1)`.
+        :type time_steps: list or array-like, optional
+        :param func_config: A dictionary or object containing additional parameters for the function.
+        :type func_config: dict or object, optional
+        :param cores: The number of CPU cores to use for parallel processing, defaults to 20.
+        :type cores: int, optional
+        :return: The combined result of applying the function to all time steps.
+        :rtype: numpy.ndarray
+        :raises TypeError: If `time_steps` is not a list or array-like of integers.
+        
+        Example:
+        >>> func_config = {'domain_range':(None, None, None, None, 64, None), 
+                           'method':'th05k', 
+                           'compute_mean_axis':'xy'}
+        >>> pbl_height  = vvmtool.func_time_parallel(func=vvmtool.get_pbl_height, time_steps=np.arange(180, 350), func_config=func_config)
+        """
+        # If time_steps is None, use np.arange(0, 720, 1)
+        if time_steps is None:
+            time_steps = np.arange(0, 720, 1)
+        
+        if type(time_steps) == np.ndarray:
+            time_steps = time_steps.tolist()
+            
+        if not isinstance(time_steps, (list, tuple)):
+            raise TypeError("time_steps must be a list or tuple of integers.")
+
+        # Create a partial function that pre-binds the config to the func
+        func_with_config = partial(func, **func_config)  # !! Modify this part !!
+
+        # Use multiprocessing to fetch variable data in parallel
+        with multiprocessing.Pool(processes=cores) as pool:
+            results = pool.starmap(func_with_config, [(time, ) for time in time_steps])
+        
+        # Combine and return the results
+        return np.squeeze(np.array(results))
         
 # --- Test --- #
 if __name__ == "__main__":
     test_case     = '/data/mlcloud/ch995334/VVM/DATA/pbl_mod_wfire_coastal_s1/'
     test_instance = VVMtools(test_case)
     # Annoucing function testing
-    print("Function testing: get_pbl_height")
+    print("Function testing: func_time_parallel")
     # Necessary variables and get result
     test_var1   = 'w'
     test_var2   = 'th'
     time_step   = 180
     test_range  = (None, None, None, None, 64, None)
-    test_result = test_instance.get_pbl_height(time=time_step, domain_range=test_range, method='tke', threshold=1e-1)
+    test_config = {'domain_range':test_range, 'method':'th05k', 'compute_mean_axis':'xy'}
+    test_result = test_instance.func_time_parallel(func=test_instance.get_pbl_height, 
+                                                   time_steps=np.arange(180, 350),
+                                                   func_config=test_config)
     # Testing result
     print("time_step:", time_step, "domain_range:", test_range)
     print(test_result)
