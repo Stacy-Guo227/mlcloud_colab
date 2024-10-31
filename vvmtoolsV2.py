@@ -341,10 +341,12 @@ class VVMtools(vvmtools_aaron.VVMTools):
             heights = self._pbl_height_dthtz(time, domain_range, compute_mean_axis, conv_agrid)
         elif method in ('tke', 'TKE'):
             tke     = self.cal_TKE(time, domain_range, conv_agrid)
+            tke     = np.where((tke-threshold)<0., 0, tke)
             hcidx   = np.nanargmin(abs(tke-threshold))
             heights = self.DIM['zc'][1:][hcidx] if conv_agrid is True else self.DIM['zc'][hcidx]
         elif method == 'enstrophy':
             enstrophy= self.cal_enstrophy(time, domain_range, conv_agrid)
+            enstrophy= np.where((enstrophy-threshold)<0., 0, enstrophy)
             hcidx   = np.nanargmin(abs(enstrophy-threshold))
             heights = self.DIM['zc'][1:][hcidx] if conv_agrid is True else self.DIM['zc'][hcidx]
         else:
@@ -409,9 +411,9 @@ if __name__ == "__main__":
     test_var2   = 'th'
     time_step   = 180
     test_range  = (None, None, None, None, 64, None)
-    test_config = {'domain_range':test_range, 'method':'th05k', 'compute_mean_axis':'xy'}
+    test_config = {'domain_range':test_range, 'method':'enstrophy', 'threshold':1e-5}
     test_result = test_instance.func_time_parallel(func=test_instance.get_pbl_height, 
-                                                   time_steps=np.arange(180, 350),
+                                                   time_steps=np.arange(350, 400),
                                                    func_config=test_config)
     # Testing result
     print("time_step:", time_step, "domain_range:", test_range)
