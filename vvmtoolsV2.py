@@ -349,9 +349,12 @@ class VVMtools(vvmtools_aaron.VVMTools):
                 heights = np.nan
         elif method == 'enstrophy':
             enstrophy= self.cal_enstrophy(time, domain_range, conv_agrid)
-            enstrophy= np.where((enstrophy-threshold)<0., 0, enstrophy)
-            hcidx   = np.nanargmin(abs(enstrophy-threshold))
-            heights = self.DIM['zc'][1:][hcidx] if conv_agrid is True else self.DIM['zc'][hcidx]
+            enstrophy= np.where((enstrophy-threshold)<0., np.nan, enstrophy)
+            hcidx   = np.nanargmin(abs(enstrophy-threshold)) if ~np.all(np.isnan(enstrophy)) else np.nan
+            if ~np.isnan(hcidx):
+                heights = self.DIM['zc'][1:][hcidx] if conv_agrid is True else self.DIM['zc'][hcidx]
+            else:
+                heights = np.nan
         else:
             raise ValueError("Unrecognized method for defining PBL height. Please choose from ['wth', 'th05k', 'dthdz', 'tke', 'enstrophy'].")
         return heights
@@ -414,7 +417,7 @@ if __name__ == "__main__":
     test_var2   = 'th'
     time_step   = 180
     test_range  = (None, None, None, None, None, 64)
-    test_config = {'domain_range':test_range, 'method':'tke', 'threshold':1e-1}
+    test_config = {'domain_range':test_range, 'method':'enstrophy', 'threshold':1e-5}
     test_result = test_instance.func_time_parallel(func=test_instance.get_pbl_height, 
                                                    time_steps=np.arange(300, 370),
                                                    func_config=test_config)
