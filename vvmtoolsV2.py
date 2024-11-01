@@ -239,7 +239,7 @@ class VVMtools(vvmtools_aaron.VVMTools):
                     result[j, i] = self._find_levels_1d(th[:, j, i], conv_agrid)
         return result
         
-    def _pbl_height_dthtz(self, time, domain_range,
+    def _pbl_height_dthdz(self, time, domain_range,
                           compute_mean_axis=None,
                           conv_agrid:bool=True):
         """
@@ -338,7 +338,7 @@ class VVMtools(vvmtools_aaron.VVMTools):
         elif method == 'th05k':
             heights = self._pbl_height_th05k(time, domain_range, compute_mean_axis, conv_agrid)
         elif method == 'dthdz':
-            heights = self._pbl_height_dthtz(time, domain_range, compute_mean_axis, conv_agrid)
+            heights = self._pbl_height_dthdz(time, domain_range, compute_mean_axis, conv_agrid)
         elif method in ('tke', 'TKE'):
             tke     = self.cal_TKE(time, domain_range, conv_agrid)
             tke     = np.where((tke-threshold)<0., np.nan, tke)
@@ -417,7 +417,7 @@ if __name__ == "__main__":
     test_var2   = 'th'
     time_step   = 180
     test_range  = (None, None, None, None, None, 64)
-    test_config = {'domain_range':test_range, 'method':'enstrophy', 'threshold':1e-5}
+    test_config = {'domain_range':test_range, 'method':'dthdz', 'compute_mean_axis':'xy'}
     test_result = test_instance.func_time_parallel(func=test_instance.get_pbl_height, 
                                                    time_steps=np.arange(300, 370),
                                                    func_config=test_config)
