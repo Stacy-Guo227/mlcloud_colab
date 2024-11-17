@@ -6,10 +6,10 @@ import glob
 import logging
 from functools import partial
 import multiprocessing
-import vvmtools as vvmtools_aaron  # vvmtools V1
+import vvmtools.analyze as vvmtools_aaron  # vvmtools V1
 
 # --- Build Class --- #
-class VVMtools(vvmtools_aaron.VVMTools):
+class VVMtools(vvmtools_aaron.DataRetriever):
     def __init__(self, casepath):
         super().__init__(casepath)
         
