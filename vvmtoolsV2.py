@@ -6,17 +6,17 @@ import glob
 import logging
 from functools import partial
 import multiprocessing
-import vvmtools as vvmtools_aaron  # vvmtools V1
+import vvmtools.analyze as vvmtools_aaron  # vvmtools V1
 
 # --- Build Class --- #
-class VVMtools(vvmtools_aaron.VVMTools):
+class VVMtools(vvmtools_aaron.DataRetriever):
     def __init__(self, casepath):
         super().__init__(casepath)
         
         self.TIMESTEPS = len(glob.glob(f"{casepath}/archive/*Dynamic*.nc"))
         self.MEANAXIS  = {'x':-1, 'y':-2, 'xy':(-1, -2)}    # compute_mean_axis options
     
-    def convert_to_agrid(self, var, time, domain_range=(None, None, None, None, None, None)):
+    def convert_to_agrid(self, time, var, domain_range=(None, None, None, None, None, None)):
         """
         Convert the six dynamic variables (u, v, w, eta, xi, zeta) to a-grid. 
         After interpolation, the corresponding dimension would reduce by 1 grid at a time, the first grid on the uninterpolated dimensions would be omitted to acquire equal dimension outputs.  
@@ -90,9 +90,9 @@ class VVMtools(vvmtools_aaron.VVMTools):
         :rtype : np.ndarray
         """
         if conv_agrid:
-            u = self.convert_to_agrid('u', time, domain_range)
-            v = self.convert_to_agrid('v', time, domain_range)
-            w = self.convert_to_agrid('w', time, domain_range)
+            u = self.convert_to_agrid(time, 'u', domain_range)
+            v = self.convert_to_agrid(time, 'v', domain_range)
+            w = self.convert_to_agrid(time, 'w', domain_range)
         else:      
             u = np.squeeze(self.get_var("u", time, domain_range, numpy=True))
             v = np.squeeze(self.get_var("v", time, domain_range, numpy=True))
@@ -119,9 +119,9 @@ class VVMtools(vvmtools_aaron.VVMTools):
         :rtype : np.ndarray
         """
         if conv_agrid:
-            eta  = self.convert_to_agrid('eta', time, domain_range)
-            xi   = self.convert_to_agrid('xi', time, domain_range)
-            zeta = self.convert_to_agrid('zeta', time, domain_range)
+            eta  = self.convert_to_agrid(time, 'eta', domain_range)
+            xi   = self.convert_to_agrid(time, 'xi', domain_range)
+            zeta = self.convert_to_agrid(time, 'zeta', domain_range)
         else: 
             ## Check dimension for the dynamic eta
             eta_temp = self.get_var('eta', 0, (1, 1, 1, 1, 1, 1), numpy=True)
@@ -159,10 +159,10 @@ class VVMtools(vvmtools_aaron.VVMTools):
         :rtype : np.ndarray
         """
         if conv_agrid:
-            windvar  = self.convert_to_agrid(wind_var, time)
-            propvar  = self.convert_to_agrid(prop_var, time)
-            windreg  = self.convert_to_agrid(wind_var, time, domain_range)
-            propreg  = self.convert_to_agrid(prop_var, time, domain_range)
+            windvar  = self.convert_to_agrid(time, wind_var)
+            propvar  = self.convert_to_agrid(time, prop_var)
+            windreg  = self.convert_to_agrid(time, wind_var, domain_range)
+            propreg  = self.convert_to_agrid(time, prop_var, domain_range)
         else:
             windvar  = np.squeeze(self.get_var(wind_var, time, numpy=True))
             propvar  = np.squeeze(self.get_var(prop_var, time, numpy=True))
@@ -218,7 +218,7 @@ class VVMtools(vvmtools_aaron.VVMTools):
         """
         if conv_agrid:
             z            = self.DIM['zc'][1:]
-            th           = self.convert_to_agrid('th', time, domain_range)
+            th           = self.convert_to_agrid(time, 'th', domain_range)
         else:
             z            = self.DIM['zc']
             th           = np.squeeze(self.get_var('th', time, domain_range, numpy=True))
@@ -260,7 +260,7 @@ class VVMtools(vvmtools_aaron.VVMTools):
         if conv_agrid:
             z            = self.DIM['zc'][1:]
             w            = self.get_var('w', time, domain_range, numpy=True)
-            th           = self.convert_to_agrid('th', time, domain_range)
+            th           = self.convert_to_agrid(time, 'th', domain_range)
         else:
             z            = self.DIM['zc']
             th           = self.get_var('th', time, domain_range, numpy=True)
@@ -450,8 +450,8 @@ if __name__ == "__main__":
     test_var2   = 'th'
     time_step   = 180
     test_range  = (None, None, None, None, None, 64)
-    test_config = {'domain_range':test_range, 'method':'dthdz', 'compute_mean_axis':'xy'}
-    test_result = test_instance.func_time_parallel(func=test_instance.get_pbl_height, 
+    test_config = {'domain_range':test_range}
+    test_result = test_instance.func_time_parallel(func=test_instance.cal_TKE, 
                                                    time_steps=np.arange(300, 370),
                                                    func_config=test_config)
     # Testing result
